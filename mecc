@@ -1,0 +1,566 @@
+#!/usr/bin/env python
+import os, sys, time
+
+# Constant values
+EC_PROBE_BIN            = "/usr/bin/ec-probe"
+VERSION                 = "v0.1"
+
+# Cooler Boost
+COOLER_BOOST_ADDR       = "0x98"
+COOLER_BOOST_OFF        = "0x02"
+COOLER_BOOST_ON         = "0x80"
+
+# Backlight Level
+BACKLIGHT_ADDR          = "0xF3"
+BACKLIGHT_OFF           = "0x80"
+BACKLIGHT_HALF_LOW      = "0x81"
+BACKLIGHT_HALF_HIGH     = "0x82"
+BACKLIGHT_FULL          = "0x83"
+
+# Fans
+CPU_FAN_ADDR_1          = "0xCC"
+CPU_FAN_ADDR_2          = "0xCD"
+GPU_FAN_ADDR_1          = "0xCA"
+GPU_FAN_ADDR_2          = "0xCB"
+FAN_DIVISOR             = 47800
+
+# Thermals
+CPU_THERMAL_ADDR        = "0x68"
+GPU_THERMAL_ADDR        = "0x80"
+
+# Battery threshold
+BATTERY_ADDR            = "0xEF"
+BATTERY_BASE_NUM        = 0x80
+
+# Colors
+GREEN="\033[1;32m"
+BLUE="\33[94m"
+MAGENTA="\033[1;35m"
+YELLOW="\033[1;33m"
+WHITE="\33[97m"
+GREY="\033[1;30m"
+RESET="\033[0m"
+RED="\033[91m"
+
+def check_root():
+    # Check if the user has root privileges
+    if os.geteuid() != 0:
+        print(RED + "Error: root privileges is required !" + RESET)
+        exit(1)
+
+def parse_args():
+    # Try to compare the first argument
+    try:
+        args_branch(sys.argv[1])
+    except IndexError:
+        help()
+
+# Branch to the right function accordingly
+def args_branch(value):
+    # Normal commands
+    if value.lower() == "status":
+        try:
+            status_parameter(sys.argv[2])
+        except IndexError:
+            status()
+
+    elif value.lower() == "cooler-boost":
+        try:
+            cooler_boost(sys.argv[2])
+        except IndexError:
+            help()
+
+    elif value.lower() == "backlight":
+        try:
+            backlight(sys.argv[2])
+        except IndexError:
+            help()
+
+    elif value.lower() == "fans" or value.lower() == "fans-speed":
+        print(MAGENTA + "Gathering values" + RESET, end="\r")
+        print_fans_speed()
+        exit(0)
+
+    elif value.lower() == "thermals":
+        print(MAGENTA + "Gathering values" + RESET, end="\r")
+        print_thermals()
+        exit(0)
+
+    elif value.lower() == "battery-threshold" or value.lower() == "bt":
+        try:
+            set_battery_threshold(sys.argv[2])
+        except IndexError:
+            help()
+
+    # Utils commands
+    elif value.lower() == "help":
+        help()
+
+    elif value.lower() == "version":
+        version()
+
+    # Debug commands
+    elif value.lower() == "read":
+        try:
+            read(sys.argv[2])
+        except IndexError:
+            help()
+
+    elif value.lower() == "write":
+        try:
+            write(sys.argv[2], sys.argv[3])
+        except IndexError:
+            help()
+
+    elif value.lower() == "dump":
+        dump()
+
+    # Error
+    else:
+        help()
+
+# Show global status
+def status():
+    print(MAGENTA + "Gathering values" + RESET, end="\r")
+
+    cooler_boost_status         = get(COOLER_BOOST_ADDR, COOLER_BOOST_OFF,
+                                None, None, None, COOLER_BOOST_ON)
+    backlight_level_status      = get(BACKLIGHT_ADDR, BACKLIGHT_OFF,
+                                BACKLIGHT_HALF_LOW, None,
+                                BACKLIGHT_HALF_HIGH, BACKLIGHT_FULL)
+
+    print_fans_speed()
+    print("")
+    print_thermals()
+    print("")
+    print("Cooler Boost: "                  + cooler_boost_status)
+    print_battery_threshold()
+    print("Backlight Level: "               + backlight_level_status)
+
+    exit(0)
+
+
+# Show one parameter status
+def status_parameter(parameter):
+    print(MAGENTA + "Gathering value" + RESET, end="\r")
+
+    if parameter.lower() == "cooler-boost":
+        parameter_status      = get(COOLER_BOOST_ADDR, COOLER_BOOST_OFF,
+                                None, None, None, COOLER_BOOST_ON)
+
+    elif parameter.lower() == "backlight":
+        parameter_status      = get(BACKLIGHT_ADDR, BACKLIGHT_OFF,
+                                BACKLIGHT_HALF_LOW, None,
+                                BACKLIGHT_HALF_HIGH, BACKLIGHT_FULL)
+
+
+    elif parameter.lower() == "cpu-fan":
+        print_cpu_fan_speed()
+
+    elif parameter.lower() == "gpu-fan":
+        print_gpu_fan_speed()
+
+    elif parameter.lower() == "cpu-temperature" or parameter.lower() == "ct":
+        print_cpu_temperature()
+
+    elif parameter.lower() == "gpu-temperature" or parameter.lower() == "gt":
+        print_gpu_temperature()
+
+    elif parameter.lower() == "battery-threshold" or parameter.lower() == "bt":
+        print_gpu_temperature()
+    else:
+        help()
+
+    print(parameter + ": " + parameter_status)
+
+    exit(0)
+
+## Cooler boost
+
+def cooler_boost(value):
+    # Set cooler_boost On
+    if value.lower() == "on":
+        set(COOLER_BOOST_ADDR, COOLER_BOOST_ON)
+        print(GREEN + "Cooler boost ON !" + RESET)
+        exit(0)
+
+    # Set cooler_boost Off
+    elif value.lower() == "off":
+        set(COOLER_BOOST_ADDR, COOLER_BOOST_OFF)
+        print(RED + "Cooler boost OFF !" + RESET)
+        exit(0)
+
+    # Toggle cooler_boost
+    elif value.lower() == "toggle":
+        msg = toggle(COOLER_BOOST_ADDR, COOLER_BOOST_OFF, None,
+                    None, None, COOLER_BOOST_ON)
+        print(YELLOW + "Cooler boost " + msg + " !" + RESET)
+        exit(0)
+
+    else:
+        help()
+
+## Backlight
+
+def backlight(value):
+    # Set backlight Full
+    if value.lower() == "full" or value.lower() == "on":
+        set(BACKLIGHT_ADDR, BACKLIGHT_FULL)
+        print(GREEN + "Backlight level FULL !" + RESET)
+        exit(0)
+
+    # Set backlight High
+    elif value.lower() == "high":
+        set(BACKLIGHT_ADDR, BACKLIGHT_HALF_HIGH)
+        print(YELLOW + "Backlight level HIGH !" + RESET)
+        exit(0)
+
+    # Set backlight Low
+    elif value.lower() == "low":
+        set(BACKLIGHT_ADDR, BACKLIGHT_HALF_LOW)
+        print(GREY + "Backlight level LOW !" + RESET)
+        exit(0)
+
+
+    # Set backlight Off
+    elif value.lower() == "off":
+        set(BACKLIGHT_ADDR, BACKLIGHT_OFF)
+        print(RED + "Backlight level OFF !" + RESET)
+        exit(0)
+
+    # Set backlight Up
+    elif value.lower() == "up":
+        out = execute(EC_PROBE_BIN + " read " + BACKLIGHT_ADDR)
+        hex = out[out.find("(")+1:out.find(")")]
+
+        up_value = (int(hex, 16) + 1)
+        if up_value <= int(BACKLIGHT_FULL, 16):
+            set(BACKLIGHT_ADDR, str(up_value))
+
+        backlight_level_status      = get(BACKLIGHT_ADDR, BACKLIGHT_OFF,
+                                    BACKLIGHT_HALF_LOW, None,
+                                    BACKLIGHT_HALF_HIGH, BACKLIGHT_FULL)
+
+        print(GREEN + "Backlight level " + backlight_level_status + " !" + RESET)
+        exit(0)
+
+    # Set backlight Down
+    elif value.lower() == "down":
+        out = execute(EC_PROBE_BIN + " read " + BACKLIGHT_ADDR)
+        hex = out[out.find("(")+1:out.find(")")]
+
+        down_value = (int(hex, 16) - 1)
+        if down_value >= int(BACKLIGHT_OFF, 16):
+            set(BACKLIGHT_ADDR, str(down_value))
+
+        backlight_level_status      = get(BACKLIGHT_ADDR, BACKLIGHT_OFF,
+                                    BACKLIGHT_HALF_LOW, None,
+                                    BACKLIGHT_HALF_HIGH, BACKLIGHT_FULL)
+
+        print(RED + "Backlight level " + backlight_level_status + " !" + RESET)
+        exit(0)
+
+    elif value.lower() == "toggle":
+        msg = toggle(BACKLIGHT_ADDR, BACKLIGHT_OFF, BACKLIGHT_HALF_LOW,
+                    None, BACKLIGHT_HALF_HIGH, BACKLIGHT_FULL)
+        print(YELLOW + "Backlight level " + msg + " !" + RESET)
+        exit(0)
+
+    else:
+        help()
+
+## Fans
+
+# Get fans speed values
+def fans_speed():
+    # Align cpu values
+    cpu =   (int(get_raw(CPU_FAN_ADDR_1), 16) << 2)
+    cpu +=  int(get_raw(CPU_FAN_ADDR_2), 16)
+
+    try:
+        cpu = round(FAN_DIVISOR / cpu)
+    except ZeroDivisionError:
+        cpu = 0
+
+    # Align gpu values
+    gpu =   (int(get_raw(GPU_FAN_ADDR_1), 16) << 2)
+    gpu +=  int(get_raw(GPU_FAN_ADDR_2), 16)
+
+    try:
+        gpu = round(FAN_DIVISOR / gpu)
+    except ZeroDivisionError:
+        gpu = 0
+
+    return cpu, gpu
+
+# Set text color depending on the fan speed
+def eval_fan_speed(value):
+    if value <= 200:
+        return (GREEN + str(value) + RESET)
+    elif value <= 300:
+        return (YELLOW + str(value) + RESET)
+    else:
+        return (RED + str(value) + RESET)
+
+# Print fans speed values
+def print_fans_speed():
+    (cpu, gpu) = fans_speed()
+    print("CPU Fan speed: " + eval_fan_speed(cpu) + " RPM")
+    print("GPU Fan speed: " + eval_fan_speed(gpu) + " RPM")
+
+# Print cpu fan speed values
+def print_cpu_fan_speed():
+    (cpu, gpu) = fans_speed()
+    print("CPU Fan speed: " + eval_fan_speed(cpu) + " RPM")
+    exit(0)
+
+# Print gpu fan speed values
+def print_gpu_fan_speed():
+    (cpu, gpu) = fans_speed()
+    print("GPU Fan speed: " + eval_fan_speed(gpu) + " RPM")
+    exit(0)
+
+## Thermals
+
+# Get thermals values
+def thermals():
+    # cpu temperature
+    cpu = int(get_raw(CPU_THERMAL_ADDR), 16)
+
+    # gpu temperature
+    gpu = int(get_raw(GPU_THERMAL_ADDR), 16)
+
+    return cpu, gpu
+
+# Set text color depending on the temperature
+def eval_temperature(value):
+    if value <= 45:
+        return (GREEN + str(value) + RESET)
+    elif value <= 75:
+        return (YELLOW + str(value) + RESET)
+    else:
+        return (RED + str(value) + RESET)
+
+# Print thermals values
+def print_thermals():
+    (cpu, gpu) = thermals()
+    print("CPU temperature: " + eval_temperature(cpu) + " °C")
+    print("GPU temperature: " + eval_temperature(gpu) + " °C")
+
+# Print cpu fan temperature
+def print_cpu_temperature():
+    (cpu, gpu) = thermals()
+    print("CPU temperature: " + eval_temperature(cpu) + " °C")
+    exit(0)
+
+# Print gpu fan temperature
+def print_gpu_temperature():
+    (cpu, gpu) = thermals()
+    print("GPU temperature: " + eval_temperature(gpu) + " °C")
+    exit(0)
+
+## Battery charging threshold
+
+# Get battery threshold
+def battery_threshold():
+    value = int(get_raw(BATTERY_ADDR), 16)
+
+    # Substract battery Base num
+    value -= BATTERY_BASE_NUM
+
+    return value
+
+# Set battery threshold
+def set_battery_threshold(value):
+    if int(value) < 20:
+        print(RED + "Error min battery threshold is 20" + RESET)
+        exit(1)
+    elif int(value) > 100:
+        print(RED + "Error max battery threshold is 100" + RESET)
+        exit(1)
+
+    # Add battery Base num
+    set(BATTERY_ADDR, str(BATTERY_BASE_NUM + int(value)))
+
+    print(GREEN + "Battery Charging Threshold is now at " + value + RESET)
+    exit(0)
+
+# Eval battery threshold
+def eval_battery_threshold(value):
+    if value <= 30:
+        return (RED + str(value) + RESET)
+    elif value <= 80:
+        return (YELLOW + str(value) + RESET)
+    else:
+        return (GREEN + str(value) + RESET)
+
+    return value
+
+# Print battery threshold
+def print_battery_threshold():
+    print("Battery Charging Threshold: " +
+        eval_battery_threshold(battery_threshold()) + " %")
+
+    return
+
+## Debug functions
+
+# ec-probe read
+def read(address):
+    print(GREEN + "Reading value" + RESET, end="\r")
+    out = execute(EC_PROBE_BIN + " read " + address)
+
+    # Strip output values
+    dec = out.split(" (")[0]
+    hex = out[out.find("(")+1:out.find(")")]
+
+    print("address: " + BLUE + address + RESET +
+        " -> dec: " + GREEN + dec + RESET + " hex: " +
+        RED + hex + RESET)
+
+    exit(0)
+
+# ec-probe write
+def write(address, value):
+    print(RED + "Writing value" + RESET, end="\r")
+    set(address, value)
+
+    print("address: " + BLUE + address + RESET +
+        " -> value: " + GREEN + value + RESET)
+
+    exit(0)
+
+# Show ec-probe dump for debugging purposes
+def dump():
+    print("ec-probe dump:")
+    os.system(EC_PROBE_BIN + " dump")
+    exit(0)
+
+## Info
+
+# Show help
+def help():
+    print(BLUE + "mecc status" + RESET + ": show the status of all parameters")
+    print(BLUE + "mecc status [PARAMETER]" + RESET + ": show the status of a parameter")
+    print(BLUE + "mecc cooler-booster [VALUE]" + RESET + ": set cooler booster to on/off/toggle")
+    print(BLUE + "mecc backlight [VALUE]" + RESET + ": set backlight level to full/high/low/off/up/down/toggle")
+    print(BLUE + "mecc fans" + RESET + ": show the RPM of all fans")
+    print(BLUE + "mecc fans-speed" + RESET + ": same as above")
+    print(BLUE + "mecc thermals" + RESET + ": show the temperature of all thermals sources")
+    print(BLUE + "mecc battery-threshold" + RESET + ": set the battery charging threshold")
+    print(BLUE + "mecc bt" + RESET + ": same as above")
+    print(BLUE + "mecc help" + RESET + ": show help menu")
+    print(BLUE + "mecc version" + RESET + ": show mecc version")
+    print("")
+    print(GREEN + "Parameters list: " + RESET + "cooler-boost, backlight, cpu-fan, gpu-fan, cpu-temperature (or ct),\n"
+                                                + "gpu-temperature (or gt), battery-treshold (or bt)")
+    print("")
+    print(RED + "Danger Zone !")
+    print("The following commands are for debugging and development purposes only:" + RESET)
+    print(YELLOW + "mecc dump" + RESET + ": dump all values of the ec firmware")
+    print(YELLOW + "mecc read [ADDRESS]" + RESET + ": read value at the address in the ec firmware")
+    print(RED + "mecc write [ADDRESS] [VALUE]" + RESET + ": write value at the address in the ec firmware")
+
+    exit(0)
+
+# Show version
+def version():
+    print("meec " + RED + VERSION + RESET)
+    print("msi ec firmware controller")
+    exit(0)
+
+## Utils
+
+# Takes a command and returns the output
+def execute(cmd):
+    return os.popen(cmd).read()
+
+# Determine if printing ON or FULL
+def determine_on_text(low, half, high):
+    if low == None and half == None and high == None:
+        return GREEN + "ON" + RESET
+    else:
+        return GREEN + "FULL" + RESET
+
+# Get the parameter status
+# Return status in a printable format
+def get(address, off, half_low, half, half_high, on):
+    out = execute(EC_PROBE_BIN + " read " + address)
+    hex = out[out.find("(")+1:out.find(")")]
+
+    if hex == off:
+        return RED + "OFF" + RESET
+
+    elif hex == half_low:
+        return GREY + "HALF_LOW" + RESET
+
+    elif hex == half:
+        return BLUE + "HALF" + RESET
+
+    elif hex == half_high:
+        return YELLOW + "HALF_HIGH" + RESET
+
+    elif hex == on:
+        return determine_on_text(half_low, half, half_high)
+
+    else:
+        return BLUE + hex + RESET
+
+# Get the parameter status
+# Return raw hex value
+def get_raw(address):
+    # Sleep because we can get to high values
+    time.sleep(0.2)
+
+    out = execute(EC_PROBE_BIN + " read " + address)
+    hex = out[out.find("(")+1:out.find(")")]
+
+    return hex
+
+# ec-probe write function
+def set(address, value):
+    res = os.system(EC_PROBE_BIN + " write " + address +
+        " " + value)
+
+    # Check if the command has been successful
+    if res != 0:
+        print(RED + "Error cannot write to address " + address + " !" + RESET)
+        exit(res)
+
+    return
+
+# Toggle the parameter
+def toggle(address, off, half_low, half, half_high, on):
+    # Get current value in hex
+    out = execute(EC_PROBE_BIN + " read " + address)
+    current_value = out[out.find("(")+1:out.find(")")]
+
+    if current_value == on:
+        # Turn off
+        set(address, off);
+        return "OFF"
+
+    elif current_value == half_low:
+        # Turn half high
+        set(address, half_high);
+        return "HIGH"
+
+    elif current_value == half:
+        # Turn off
+        set(address, off);
+        return "OFF"
+
+    elif current_value == half_high:
+        # Turn half low
+        set(address, half_low);
+        return "LOW"
+
+    else:
+        # Turn on
+        set(address, on);
+        return determine_on_text(half_low, half, half_high)
+
+# Entry Point
+check_root()
+parse_args()
+status()
