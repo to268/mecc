@@ -296,9 +296,9 @@ def fans_speed():
 
 # Set text color depending on the fan speed
 def eval_fan_speed(value):
-    if value <= 200:
+    if value <= 400:
         return (GREEN + str(value) + RESET)
-    elif value <= 300:
+    elif value <= 800:
         return (YELLOW + str(value) + RESET)
     else:
         return (RED + str(value) + RESET)
@@ -443,7 +443,7 @@ def dump():
 def help():
     print(BLUE + "mecc status" + RESET + ": show the status of all parameters")
     print(BLUE + "mecc status [PARAMETER]" + RESET + ": show the status of a parameter")
-    print(BLUE + "mecc cooler-booster [VALUE]" + RESET + ": set cooler booster to on/off/toggle")
+    print(BLUE + "mecc cooler-boost [VALUE]" + RESET + ": set cooler boost to on/off/toggle")
     print(BLUE + "mecc backlight [VALUE]" + RESET + ": set backlight level to full/high/low/off/up/down/toggle")
     print(BLUE + "mecc fans" + RESET + ": show the RPM of all fans")
     print(BLUE + "mecc fans-speed" + RESET + ": same as above")
