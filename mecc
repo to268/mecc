@@ -145,7 +145,7 @@ def status():
 def status_parameter(parameter):
     print(MAGENTA + "Gathering value" + RESET, end="\r")
 
-    if parameter.lower() == "cooler-boost":
+    if parameter.lower() == "cooler-boost" or parameter.lower() == "cb":
         parameter_status      = get(COOLER_BOOST_ADDR, COOLER_BOOST_OFF,
                                 None, None, None, COOLER_BOOST_ON)
 
@@ -444,6 +444,7 @@ def help():
     print(BLUE + "mecc status" + RESET + ": show the status of all parameters")
     print(BLUE + "mecc status [PARAMETER]" + RESET + ": show the status of a parameter")
     print(BLUE + "mecc cooler-boost [VALUE]" + RESET + ": set cooler boost to on/off/toggle")
+    print(BLUE + "mecc cb [VALUE]" + RESET + ": same as above")
     print(BLUE + "mecc backlight [VALUE]" + RESET + ": set backlight level to full/high/low/off/up/down/toggle")
     print(BLUE + "mecc fans" + RESET + ": show the RPM of all fans")
     print(BLUE + "mecc fans-speed" + RESET + ": same as above")
